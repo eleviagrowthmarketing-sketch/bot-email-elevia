@@ -1,4 +1,4 @@
-require('dotenv').config();
+﻿require('dotenv').config();
 const fs = require('fs');
 const { sendEmail } = require('./mailer');
 const { inicializarDB, buscarProximosLeads, marcarEnviado, marcarErro, atualizarProgresso, verStatus } = require('./db');
@@ -12,66 +12,65 @@ async function runDisparo() {
   const leads = await buscarProximosLeads(LOTE_DIARIO);
 
   if (leads.length === 0) {
-    console.log('📭 Nenhum lead pendente. Importe uma nova base.');
+    console.log('Nenhum lead pendente. Importe uma nova base.');
     return;
   }
 
   const template = fs.readFileSync('./templates/email.html', 'utf-8');
+  const trackingBaseUrl = (process.env.CRM_API_URL || 'https://crm-api-production-21c7.up.railway.app').replace(/\/$/, '');
 
-  // Cria pasta de logs se não existir
   if (!fs.existsSync('./logs')) fs.mkdirSync('./logs');
 
   let enviados = 0;
-  let erros    = 0;
+  let erros = 0;
 
-  console.log(`\n🚀 Iniciando disparo para ${leads.length} leads...\n`);
+  console.log(`\nIniciando disparo para ${leads.length} leads...\n`);
 
   for (const lead of leads) {
     const html = template
-      .replace(/{{nome}}/g,    lead.nome    || lead.empresa)
-      .replace(/{{email}}/g,   lead.email)
-      .replace(/{{empresa}}/g, lead.empresa || '');
+      .replace(/{{nome}}/g, lead.nome || lead.empresa)
+      .replace(/{{email}}/g, lead.email)
+      .replace(/{{empresa}}/g, lead.empresa || '')
+      .replace(/{{tracking_open_url}}/g, trackingBaseUrl + '/track/open.gif?id=' + lead.id)
+      .replace(/{{tracking_click_url}}/g, trackingBaseUrl + '/track/click?id=' + lead.id);
 
     try {
       await sendEmail({
-        to:      lead.email,
-        subject: `O Google da ${lead.empresa} está com problemas sérios`,
+        to: lead.email,
+        subject: `O Google da ${lead.empresa} esta com problemas serios`,
         html,
       });
       await marcarEnviado(lead.id);
       enviados++;
-      console.log(`✓ Enviado → ${lead.empresa} <${lead.email}>`);
+      console.log(`Enviado -> ${lead.empresa} <${lead.email}>`);
 
-      // Adiciona automaticamente no CRM da Elevia
       await adicionarLeadNoCRM({ nome: lead.nome, empresa: lead.empresa, email: lead.email, segmento: lead.segmento });
     } catch (err) {
       await marcarErro(lead.id, err.message);
       erros++;
-      console.error(`✗ Erro   → ${lead.email}: ${err.message}`);
+      console.error(`Erro -> ${lead.email}: ${err.message}`);
     }
 
-    // 6s entre envios — seguro para SMTP
     await new Promise(r => setTimeout(r, 6000));
   }
 
   await atualizarProgresso(enviados, erros);
 
-  // Log do dia
-  const data  = new Date().toISOString().split('T')[0];
+  const data = new Date().toISOString().split('T')[0];
   const stats = await verStatus();
   fs.writeFileSync(`./logs/${data}.json`, JSON.stringify({
-    enviados, erros,
+    enviados,
+    erros,
     total_enviados: stats.enviados,
-    pendentes:      stats.pendentes,
+    pendentes: stats.pendentes,
   }, null, 2));
 
-  console.log(`\n✅ Disparo concluído! Enviados: ${enviados} | Erros: ${erros}`);
-  console.log(`📊 Total acumulado: ${stats.enviados} enviados | ${stats.pendentes} pendentes\n`);
+  console.log(`\nDisparo concluido! Enviados: ${enviados} | Erros: ${erros}`);
+  console.log(`Total acumulado: ${stats.enviados} enviados | ${stats.pendentes} pendentes\n`);
 }
 
 module.exports = { runDisparo };
 
-// Executa direto se chamado via node index.js
 if (require.main === module) {
   runDisparo().catch(console.error);
 }
