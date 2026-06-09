@@ -1,30 +1,34 @@
 require('dotenv').config();
 const cron = require('node-cron');
-const { execSync } = require('child_process');
 const { runDisparo } = require('./index');
 
-console.log('⏰ Scheduler ativo — aguardando horário de disparo...');
+console.log('Scheduler ativo - aguardando disparo automatico as 09:00 America/Sao_Paulo.');
 
-// Todo dia útil às 9h (horário de Brasília)
-cron.schedule('0 9 * * 1-5', async () => {
+let running = false;
 
-  console.log('\n⏰ Horário atingido! Preparando lote do dia...');
-
-  // 1. Carrega o próximo lote de 500 leads
-  try {
-    execSync('node C:\\Users\\Suporte\\bot-leads\\gerenciar-lotes.js proximo', {
-      stdio: 'inherit',
-    });
-  } catch (err) {
-    console.error('❌ Erro ao carregar lote:', err.message);
+async function executarDisparoAgendado() {
+  if (running) {
+    console.log('Disparo ignorado: ja existe uma execucao em andamento.');
     return;
   }
 
-  // 2. Dispara os emails do lote
-  console.log('\n🚀 Iniciando disparo do lote...');
-  await runDisparo();
-  console.log('✅ Lote do dia concluído!\n');
+  running = true;
+  const startedAt = new Date().toISOString();
+  console.log(`\nHorario atingido. Iniciando disparo automatico: ${startedAt}`);
 
-}, {
+  try {
+    await runDisparo();
+    console.log('Disparo automatico concluido.\n');
+  } catch (err) {
+    console.error(`Erro no disparo automatico: ${err.message}`);
+    console.error(err.stack);
+  } finally {
+    running = false;
+  }
+}
+
+cron.schedule('0 9 * * 1-5', executarDisparoAgendado, {
   timezone: 'America/Sao_Paulo',
 });
+
+module.exports = { executarDisparoAgendado };
