@@ -6,6 +6,11 @@ const { adicionarLeadNoCRM } = require('./crm');
 
 const LOTE_DIARIO = 300;
 
+function isErroTemporario(err) {
+  const msg = String(err && err.message ? err.message : err).toLowerCase();
+  return msg.includes('timeout') || msg.includes('etimedout') || msg.includes('econnreset') || msg.includes('fetch failed') || msg.includes('network');
+}
+
 async function runDisparo() {
   await inicializarDB();
 
@@ -46,6 +51,11 @@ async function runDisparo() {
 
       await adicionarLeadNoCRM({ nome: lead.nome, empresa: lead.empresa, email: lead.email, segmento: lead.segmento });
     } catch (err) {
+      if (isErroTemporario(err)) {
+        console.error(`Erro temporario de envio. Parando lote para nao queimar leads: ${lead.email}: ${err.message}`);
+        break;
+      }
+
       await marcarErro(lead.id, err.message);
       erros++;
       console.error(`Erro -> ${lead.email}: ${err.message}`);
@@ -74,3 +84,5 @@ module.exports = { runDisparo };
 if (require.main === module) {
   runDisparo().catch(console.error);
 }
+
+
